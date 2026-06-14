@@ -1,0 +1,29 @@
+services:
+  gemma4-vllm:
+    image: vllm/vllm-openai:latest
+    container_name: gemma4-vllm
+    ports:
+      - "8000:8000"
+    environment:
+      HF_TOKEN: ${HF_TOKEN}
+    volumes:
+      - huggingface-cache:/root/.cache/huggingface
+    ipc: host
+    command:
+      - --model
+      - google/gemma-4-12B-it-qat-w4a16-ct
+      - --max-model-len
+      - "4096"
+      - --gpu-memory-utilization
+      - "0.90"
+      - --enforce-eager
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  huggingface-cache:
