@@ -106,6 +106,18 @@
   .msg .content ul, .msg .content ol { margin: 8px 0; padding-inline-start: 24px; }
   .msg .content li { margin: 4px 0; }
   .msg .content li::marker { color: var(--text-dim); }
+  .msg .content .md-table-wrap {
+    position: relative;
+    overflow-x: auto; margin: 12px 0;
+    border: 1px solid var(--border); border-radius: 10px;
+  }
+  .msg .content table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .msg .content th, .msg .content td {
+    padding: 8px 12px; border-bottom: 1px solid var(--border);
+    text-align: start; vertical-align: top;
+  }
+  .msg .content th { background: var(--bg-elev-2); font-weight: 600; }
+  .msg .content tbody tr:last-child td { border-bottom: none; }
   .cursor-blink::after {
     content: "▍"; color: var(--accent);
     animation: blink 1s steps(2) infinite;
@@ -225,11 +237,11 @@
     background: #1e1e24; color: var(--text-dim);
     border: 1px solid var(--border); border-radius: 7px;
     padding: 3px 9px; font-size: 11.5px; cursor: pointer;
-    opacity: 0; transition: opacity .15s, color .15s; font-family: inherit;
+    opacity: 1; transition: color .15s, border-color .15s; font-family: inherit;
+    z-index: 2;
   }
-  .msg .content pre:hover .code-copy { opacity: 1; }
   .code-copy:hover { color: var(--text); border-color: #3a3a44; }
-  .code-copy.copied { color: var(--accent); border-color: var(--accent); opacity: 1; }
+  .code-copy.copied { color: var(--accent); border-color: var(--accent); }
 
   .msg-actions { margin-top: 12px; display: flex; gap: 8px; }
   .msg-copy {
@@ -537,6 +549,43 @@ function inlineMd(s) {
     .replace(/\*([^*\n]+)\*/g, "<em>$1</em>");
 }
 
+function isTableRow(line) {
+  const t = line.trim();
+  return t.includes("|") && (t.match(/\|/g) || []).length >= 2;
+}
+function isTableSeparator(line) {
+  const t = line.trim();
+  if (!t.includes("|")) return false;
+  const cells = t.replace(/^\|/, "").replace(/\|$/, "").split("|").map(c => c.trim()).filter(Boolean);
+  return cells.length > 0 && cells.every(c => /^:?-{3,}:?$/.test(c));
+}
+function parseTableRow(line) {
+  return line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map(c => c.trim());
+}
+function tableToMarkdown(header, bodyRows) {
+  const line = (cells) => "| " + cells.join(" | ") + " |";
+  const sep = "| " + header.map(() => ":---").join(" | ") + " |";
+  return [line(header), sep, ...bodyRows.map(line)].join("\n");
+}
+function tableToMarkdownFromEl(table) {
+  const rows = [...table.querySelectorAll("tr")].map(tr =>
+    [...tr.querySelectorAll("th,td")].map(c => c.textContent.trim())
+  );
+  if (rows.length < 2) return rows.length ? tableToMarkdown(rows[0], []) : "";
+  return tableToMarkdown(rows[0], rows.slice(1));
+}
+
+function renderTable(header, bodyRows) {
+  let html = '<div class="md-table-wrap"><table dir="auto"><thead><tr>';
+  html += header.map(c => `<th>${inlineMd(c)}</th>`).join("");
+  html += "</tr></thead><tbody>";
+  for (const row of bodyRows) {
+    html += "<tr>" + row.map(c => `<td>${inlineMd(c)}</td>`).join("") + "</tr>";
+  }
+  html += "</tbody></table></div>";
+  return html;
+}
+
 function renderTextBlock(text) {
   const lines = text.split("\n");
   let html = "";
@@ -551,8 +600,22 @@ function renderTextBlock(text) {
       listItems = []; listType = null;
     }
   };
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     const t = line.trim();
+    if (isTableRow(line) && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
+      flushPara(); flushList();
+      const header = parseTableRow(line);
+      const bodyRows = [];
+      i += 2;
+      while (i < lines.length && isTableRow(lines[i]) && !isTableSeparator(lines[i])) {
+        bodyRows.push(parseTableRow(lines[i]));
+        i++;
+      }
+      i--;
+      html += renderTable(header, bodyRows);
+      continue;
+    }
     const h = t.match(/^(#{1,6})\s+(.*)$/);
     const ul = t.match(/^[*-]\s+(.*)$/);
     const ol = t.match(/^\d+\.\s+(.*)$/);
@@ -677,6 +740,28 @@ function addCodeCopyButtons(container, skipLastOpen) {
     pre.appendChild(btn);
   });
 }
+function addTableCopyButtons(container, skipLastOpen) {
+  const wraps = container.querySelectorAll(".md-table-wrap");
+  wraps.forEach((wrap, idx) => {
+    if (skipLastOpen && idx === wraps.length - 1) return;
+    if (wrap.querySelector(".code-copy")) return;
+    const btn = document.createElement("button");
+    btn.className = "code-copy";
+    btn.type = "button";
+    btn.textContent = "Copy";
+    btn.title = "Copy table as markdown";
+    btn.addEventListener("click", () => {
+      const table = wrap.querySelector("table");
+      copyToClipboard(table ? tableToMarkdownFromEl(table) : "")
+        .then(() => flashBtn(btn, "Copied")).catch(() => {});
+    });
+    wrap.appendChild(btn);
+  });
+}
+function addCopyButtons(container, skipLastOpen) {
+  addCodeCopyButtons(container, skipLastOpen);
+  addTableCopyButtons(container, skipLastOpen);
+}
 function addMessageActions(wrap, msg) {
   const content = wrap.querySelector(".content");
   if (!content) return;
@@ -714,7 +799,7 @@ function addMessageActions(wrap, msg) {
 }
 function enhanceMessage(wrap, msg) {
   if (!wrap) return;
-  addCodeCopyButtons(wrap.querySelector(".content"), false);
+  addCopyButtons(wrap.querySelector(".content"), false);
   if (msg.role === "assistant") addMessageActions(wrap, msg);
 }
 
@@ -786,6 +871,7 @@ async function runStream(payloadMessages, contentEl, seedText = "") {
     if (ls > 0) {
       stableEl.insertAdjacentHTML("beforeend", renderMarkdown(seedText.slice(0, ls)));
       addCodeCopyButtons(stableEl, false);
+      addTableCopyButtons(stableEl, false);
       committed = ls;
     }
     liveEl.innerHTML = renderMarkdown(acc.slice(committed));
@@ -835,6 +921,7 @@ async function runStream(payloadMessages, contentEl, seedText = "") {
             if (ls > committed) {
               stableEl.insertAdjacentHTML("beforeend", renderMarkdown(acc.slice(committed, ls)));
               addCodeCopyButtons(stableEl, false);
+              addTableCopyButtons(stableEl, false);
               committed = ls;
             }
             liveEl.innerHTML = renderMarkdown(acc.slice(committed));
