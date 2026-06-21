@@ -348,7 +348,9 @@
 
 <script>
 const DEFAULTS = {
-  endpoint: "http://localhost:8000/v1",
+  endpoint: window.location.protocol === "file:"
+    ? "http://localhost:8000/v1"
+    : `${window.location.origin}/v1`,
   system: "You are a helpful, concise assistant running locally.",
   temperature: 0.7,
   maxTokens: 1024,
@@ -382,8 +384,13 @@ const TEXT_EXTENSIONS = new Set([
 let pendingFiles = []; // File objects waiting to send
 
 function loadConfig() {
-  try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem("gemmaChatCfg") || "{}") }; }
-  catch { return { ...DEFAULTS }; }
+  try {
+    const cfg = { ...DEFAULTS, ...JSON.parse(localStorage.getItem("gemmaChatCfg") || "{}") };
+    if (window.location.protocol !== "file:" && /localhost:8000/.test(cfg.endpoint)) {
+      cfg.endpoint = DEFAULTS.endpoint;
+    }
+    return cfg;
+  } catch { return { ...DEFAULTS }; }
 }
 function saveConfig() { localStorage.setItem("gemmaChatCfg", JSON.stringify(cfg)); }
 
