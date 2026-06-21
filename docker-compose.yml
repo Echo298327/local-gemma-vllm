@@ -27,5 +27,16 @@ services:
               count: all
               capabilities: [gpu]
 
+  web:
+    image: nginx:alpine
+    container_name: gemma4-web
+    ports:
+      - "8080:80"
+    volumes:
+      - ./chat.html:/usr/share/nginx/html/chat.html:ro
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - gemma4-vllm
+
 volumes:
   huggingface-cache:

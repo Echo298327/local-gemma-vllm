@@ -17,19 +17,22 @@ OpenAI-compatible LLM server defined in a single Docker Compose file. Nothing le
 ## How it works
 
 ```
-Browser (chat.html)
+Browser
       |
-      |  HTTP  POST /v1/chat/completions  (streaming)
+      |  http://localhost:8080  (chat UI + /v1 proxy)
       v
-vLLM Docker container  (OpenAI-compatible API on localhost:8000)
+nginx container (web)
+      |  /v1/*  proxied internally
+      v
+vLLM container (gemma4-vllm)  — OpenAI-compatible API
       |
       v
 Gemma 4 model loaded on your GPU
 ```
 
-- The UI is a **single static file** (`chat.html`) — no build step, no backend, no dependencies
-  except an optional CDN for syntax highlighting.
-- vLLM exposes a standard **OpenAI-compatible** API, so the page just speaks that protocol.
+- **`web` (nginx)** serves `chat.html` and proxies **`/v1`** to vLLM — one port for the UI and API.
+- **`gemma4-vllm`** still exposes **`http://localhost:8000`** for direct API use (curl, other tools).
+- You can still open `chat.html` as a local file; it falls back to `http://localhost:8000/v1`.
 - Conversation history lives in the browser tab; vLLM itself is stateless between requests.
 
 ---
@@ -38,8 +41,9 @@ Gemma 4 model loaded on your GPU
 
 | File | Purpose |
 |------|---------|
-| `docker-compose.yml` | Defines the vLLM service, GPU access, model, and cached weights volume. |
-| `chat.html` | The full chat UI (open it in any browser). |
+| `docker-compose.yml` | Defines vLLM + nginx (`web`) services, GPU access, model settings, and cached weights volume. |
+| `nginx/nginx.conf` | Serves the chat UI and reverse-proxies `/v1` to vLLM (streaming supported). |
+| `chat.html` | The full chat UI (single static file). |
 | `.env.example` | Template for your Hugging Face token and model/runtime settings. Copy to `.env`. |
 | `.env` | Your real token. **Git-ignored — never commit it.** |
 | `.gitignore` | Keeps `.env` and editor noise out of version control. |
@@ -134,8 +138,23 @@ docker compose logs -f
 It is ready when you see `Application startup complete`.
 
 ### 5. Open the UI
-Open `chat.html` in your browser (double-click it, or serve the folder). The status dot
-turns **green** when it connects to vLLM.
+Open **http://localhost:8080** in your browser. The status dot turns **green** when the UI
+and API proxy are connected to vLLM.
+
+Alternatively, you can still double-click `chat.html` locally (uses `http://localhost:8000/v1`).
+
+### 6. Remote access (optional, ngrok)
+To use the chat from another device, tunnel the **web** port (not 8000 alone):
+
+```bash
+ngrok http 8080
+```
+
+Open the ngrok HTTPS URL on your phone or another PC. The UI calls `/v1` on the same origin,
+so one tunnel is enough.
+
+> **Warning:** this exposes your local LLM to the internet. vLLM has no built-in auth.
+> Use only for testing, or add access controls (ngrok auth, nginx basic auth, VPN, etc.).
 
 ### Stop / start
 ```bash
@@ -162,8 +181,7 @@ docker compose start    # bring it back later
   moment it finishes streaming, so you can read completed code while the rest is still typing.
 
 ### Copy buttons
-- **Per code block:** hover over any code block to reveal a **Copy** button (top-right) that
-  copies just that code.
+- **Per code block / table:** a **Copy** button (top-right) copies that block or table as text/markdown.
 - **Per message:** a **Copy message** button under each answer copies the whole reply.
 
 ### Continue a cut-off answer
@@ -184,7 +202,7 @@ Open the gear icon (top-right). Settings are saved in your browser (localStorage
 
 | Setting | What it does |
 |---------|--------------|
-| **API base URL** | Where the UI sends requests. Default `http://localhost:8000/v1`. |
+| **API base URL** | Where the UI sends requests. Default `/v1` when served on `:8080`, or `http://localhost:8000/v1` when opening the file locally. |
 | **System prompt** | The hidden instruction that shapes the assistant's behavior. |
 | **Temperature** | Higher = more creative/random, lower = more focused. Default `0.70`. |
 | **Max tokens** | Maximum length of a single reply. Raise it for longer answers. |
@@ -205,7 +223,7 @@ Open the gear icon (top-right). Settings are saved in your browser (localStorage
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Status dot stays red / "offline" | vLLM not running | `docker compose start`, check `docker compose logs`. |
+| Status dot stays red / "offline" | vLLM not running or proxy issue | `docker compose start`, check `docker compose logs gemma4-vllm` and `docker compose logs web`. |
 | `CUDA out of memory` on startup | Model + KV cache exceed VRAM | Lower `MAX_MODEL_LEN`, reduce `GPU_MEMORY_UTIL`, or switch `GEMMA_MODEL` to E4B/E2B (see Hardware profiles). |
 | Load stuck at `Loading ... 0%` (Windows) | Cache on slow `9P` mount / low RAM | Use the named Docker volume (already configured) + raise WSL memory. |
 | `401` / gated model error | License not accepted or token missing | Accept the license and verify `HF_TOKEN` in `.env`. |
