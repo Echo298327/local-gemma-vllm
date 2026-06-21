@@ -11,14 +11,14 @@ services:
     ipc: host
     command:
       - --model
-      - google/gemma-4-12B-it-qat-w4a16-ct
+      - ${GEMMA_MODEL:-google/gemma-4-12B-it-qat-w4a16-ct}
       - --max-model-len
-      - "4096"
+      - "${MAX_MODEL_LEN:-4096}"
       - --gpu-memory-utilization
-      - "0.90"
+      - "${GPU_MEMORY_UTIL:-0.90}"
       - --enforce-eager
       - --limit-mm-per-prompt
-      - '{"image": 4}'
+      - '${LIMIT_MM_PER_PROMPT:-{"image": 4}}'
     deploy:
       resources:
         reservations:
