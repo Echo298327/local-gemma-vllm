@@ -137,13 +137,9 @@ If a reply hits the length limit, an amber note appears:
 …with a green **→ Continue answer** button that asks the model to keep going and appends
 the continuation to the same message.
 
-### Hebrew / RTL support
-Each paragraph auto-detects its direction, so Hebrew renders right-to-left and English
-left-to-right — even in the same conversation. Code blocks always stay left-to-right.
-
-### Smart auto-scroll
-While streaming, the view follows the text **only if you are at the bottom**. Scroll up to
-read and auto-scroll pauses; scroll back down and it resumes.
+### RTL support
+Each paragraph auto-detects its text direction, so right-to-left and left-to-right languages
+render correctly — even when mixed in the same conversation. Code blocks always stay left-to-right.
 
 ### Settings
 Open the gear icon (top-right). Settings are saved in your browser (localStorage).

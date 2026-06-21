@@ -17,6 +17,8 @@ services:
       - --gpu-memory-utilization
       - "0.90"
       - --enforce-eager
+      - --limit-mm-per-prompt
+      - '{"image": 4}'
     deploy:
       resources:
         reservations:
